@@ -7,3 +7,4 @@ dist/
 *.log
 .pi/
 .lavish/
+.playwright-cli/

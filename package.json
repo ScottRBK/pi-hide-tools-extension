@@ -1,0 +1,34 @@
+{
+  "name": "pi-hide-tools-extension",
+  "version": "0.1.0",
+  "description": "Hide Pi's built-in tool rows without hiding extension tools",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "keywords": [
+    "pi-package"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "test": "node --import ./test/register.mjs --test test/*.test.mjs",
+    "test:tui": "node --import ./test/register.mjs test/tui-smoke.mjs"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "0.99.1 || 0.99.2",
+    "@earendil-works/pi-tui": "0.99.1 || 0.99.2"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "@earendil-works/pi-tui": {
+      "optional": true
+    }
+  }
+}

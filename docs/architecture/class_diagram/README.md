@@ -1,8 +1,7 @@
 # Architecture
 
 The extension wraps seven of Pi's built-in tools to hide their terminal text and surrounding boxes.
-Execution and stored results stay unchanged. AgentShell, Forgetful, web tools, and other
-extension tools keep their own rendering.
+Execution and stored results stay unchanged. All other extensions' tools keep their own rendering.
 
 Supported Pi versions: 0.99.1 and 0.99.2.
 

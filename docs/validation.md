@@ -43,8 +43,8 @@ npm run test:tui
 ```
 
 This starts Pi with the local extension in an isolated tmux server and session. It loads a
-saved session populated by real built-in tool executions. AgentShell, Forgetful, and web-tool
-results are fixtures; the check does not launch agents, query memory, or search the web.
+saved session populated by real built-in tool executions. Results from other extensions' tools
+are recorded fixtures; those tools are not executed.
 
 The check exercises saved preferences, show/hide toggling, Ctrl+O, visible errors, HTML export,
 reload, and session switching. It prints the directory containing terminal captures and the
@@ -61,15 +61,15 @@ To check the renderers from installed extensions, pass their entrypoints as a co
 list on Linux, macOS, or WSL2:
 
 ```bash
-PI_HIDE_TOOLS_PEER_EXTENSIONS=/path/agentshell/index.ts:/path/forgetful/index.ts \
+PI_HIDE_TOOLS_PEER_EXTENSIONS=/path/extension-a/index.ts:/path/extension-b/index.ts \
   npm run test:tui
 ```
 
-The check disables Forgetful traffic in its temporary agent directory. Review other extensions
-before including them: their startup code can install dependencies or make network requests.
+Review extensions before including them: their startup code can install dependencies or make
+network requests. The check does not block these actions for arbitrary extensions.
 
 ## Manual export check
 
 Open the terminal check's `session.html` in a browser. Confirm that results from all seven
 built-in tools are readable, even though their terminal rows were hidden. The recorded
-AgentShell, Forgetful, and web-tool results should also remain visible.
+results from other extensions' tools should also remain visible.

@@ -1,7 +1,7 @@
 # Pi Hide Tools Extension
 
-Hide built-in tool calls and results in [Pi][pi], while leaving AgentShell, Forgetful,
-web search, and other extension tools unchanged. Failed calls stay visible.
+Hide built-in tool calls and results in [Pi][pi], while leaving all other extensions' tools
+unchanged. Failed calls stay visible.
 
 ## Requirements
 

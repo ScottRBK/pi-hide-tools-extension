@@ -10,7 +10,7 @@ Pi API constraints, and known limitations. Update it when the design changes.
 ## Scope
 
 - Target only `read`, `bash`, `edit`, `write`, `grep`, `find`, and `ls`.
-- Leave AgentShell, Forgetful, web tools, and other extension tools untouched.
+- Leave all other extensions' tools untouched.
 - Preserve execution, model context, session history, and tool availability.
 - Use supported Pi APIs. Do not silently replace another extension's built-in override.
 

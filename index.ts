@@ -15,16 +15,17 @@ function redraw(ui: ExtensionUIContext): void {
 }
 
 export default function initialize(pi: ExtensionAPI): void {
-  const state = { hidden: false };
+  const state = { hidden: false, hideFailures: true };
   const preferencePath = join(getAgentDir(), "pi-hide-tools.json");
   const owned = new Map<string, string>();
 
   pi.on("session_start", function onSessionStart(_event, ctx) {
     if (ctx.mode !== "tui") return;
     try {
-      state.hidden = load(preferencePath);
+      Object.assign(state, load(preferencePath));
     } catch (error) {
       state.hidden = false;
+      state.hideFailures = true;
       ctx.ui.notify(`Hide tools: showing tools; cannot read preference: ${error}`, "warning");
     }
     // Heterogeneous schemas: each wrap() call keeps its concrete types before array erasure.
@@ -66,10 +67,15 @@ export default function initialize(pi: ExtensionAPI): void {
   });
 
   pi.registerCommand("hide-tools", {
-    description: "Hide or show built-in tool rows (failures stay visible)",
-    handler: async function toggle(_args, ctx) {
+    description: "Toggle built-in tool rows; 'failures' toggles whether failures are hidden",
+    handler: async function toggle(args, ctx) {
       if (ctx.mode !== "tui") {
         ctx.ui.notify("Hide tools is only available in Pi's terminal UI.", "warning");
+        return;
+      }
+      const option = args.trim();
+      if (option && option !== "failures") {
+        ctx.ui.notify("Usage: /hide-tools [failures]", "warning");
         return;
       }
       const lost = pi.getAllTools().filter((tool) => owned.has(tool.name)
@@ -78,15 +84,21 @@ export default function initialize(pi: ExtensionAPI): void {
         const names = lost.map((tool) => tool.name).join(", ");
         ctx.ui.notify(`Hide tools: override ownership changed: ${names}`, "warning");
       }
-      state.hidden = !state.hidden;
+      const toggleFailures = option === "failures";
+      if (toggleFailures) state.hideFailures = !state.hideFailures;
+      else state.hidden = !state.hidden;
       redraw(ctx.ui);
-      const visibility = state.hidden ? "hidden (failures stay visible)" : "visible";
+      const visibility = !state.hidden ? "visible"
+        : state.hideFailures ? "hidden (including failures)" : "hidden (failures stay visible)";
+      const failurePolicy = state.hideFailures ? "are included" : "stay visible";
+      const message = toggleFailures
+        ? `Failed calls ${failurePolicy} when tools are hidden`
+        : `Built-in tools ${visibility}`;
       try {
-        save(preferencePath, state.hidden);
-        ctx.ui.notify(`Built-in tools ${visibility}. Preference saved.`, "info");
+        save(preferencePath, state);
+        ctx.ui.notify(`${message}. Preference saved.`, "info");
       } catch (error) {
-        ctx.ui.notify(`Built-in tools ${visibility} for this session only; cannot save: ${error}`,
-          "warning");
+        ctx.ui.notify(`${message} for this session only; cannot save: ${error}`, "warning");
       }
     },
   });

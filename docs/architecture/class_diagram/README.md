@@ -21,18 +21,19 @@ classDiagram
 
     class preferences_Module["src/preferences.ts"] {
         <<module>>
-        +load(path: string) boolean
-        +save(path: string, hidden: boolean) void
+        +load(path: string) Preferences
+        +save(path: string, preferences: Preferences) void
     }
 
     class rendering_Module["src/tool-rendering.ts"] {
         <<module>>
-        +wrap(factory: BuiltInFactory, state: VisibilityState) ToolDefinition
+        +wrap(factory: BuiltInFactory, state: Preferences) ToolDefinition
     }
 
-    class rendering_VisibilityState["VisibilityState"] {
+    class preferences_Preferences["Preferences"] {
         <<type>>
         +hidden: boolean
+        +hideFailures: boolean
     }
 
     class pi_ToolDefinition["ToolDefinition (Pi)"] {
@@ -46,8 +47,9 @@ classDiagram
 
     index_Module ..> preferences_Module : onSessionStart() calls load()
     index_Module ..> rendering_Module : onSessionStart() calls wrap()
-    index_Module --> rendering_VisibilityState : holds
-    rendering_Module --> rendering_VisibilityState : returned callbacks reference
+    index_Module --> preferences_Preferences : holds
+    preferences_Module ..> preferences_Preferences : load() returns
+    rendering_Module --> preferences_Preferences : returned callbacks reference
     rendering_Module ..> pi_ToolDefinition : wrap() returns a decorated definition
 ```
 
@@ -55,7 +57,8 @@ classDiagram
 
 - Module boxes contain functions. `+` means exported and `-` internal in the extension.
   `onSessionStart` and `toggle` are named callbacks inside `initialize`. Their argument and
-  return types are inferred from Pi. `VisibilityState` is a plain object.
+  return types are inferred from Pi. `Preferences` is a plain shared object declared in
+  `src/preferences.ts`; rendering imports only its type, not the persistence functions.
 - Solid arrows mean a reference; dotted arrows mean a dependency or the labelled call.
 - Pi's optional renderers are function properties, shown as methods. The wrapper supplies both.
   Other definition fields are preserved but omitted here.
@@ -70,7 +73,7 @@ classDiagram
 
 ## Responsibilities
 
-### Lifecycle and command (`index.ts:11-93`)
+### Lifecycle and command (`index.ts:11-105`)
 
 - Register `/hide-tools` and `session_start`; defer tool registration until interactive startup.
   Check for mode `"tui"`. `hasUI` alone would incorrectly include RPC mode.
@@ -84,17 +87,21 @@ classDiagram
   file URLs, and platform-specific paths), not the raw `getSettings()` value.
 - Preserve metadata and tool availability. Never use `exposure: "hidden"` to hide presentation:
   that would make the tool unreachable. Registration and toggles do not change the active set.
-- Toggle shared state, redraw through an expand/collapse round trip, and save the preference.
-  Restore the global Ctrl+O state. Individual mouse-expanded rows reset to that global state.
+- With no argument, toggle `hidden`. With `failures`, toggle `hideFailures` without changing
+  `hidden`. Reject other arguments with a usage warning. Failures are included by default.
+- Update the shared preferences object in place so existing rows see both choices. Redraw through
+  an expand/collapse round trip and save both choices. Restore the global Ctrl+O state.
+  Individual mouse-expanded rows reset to that global state.
 
 ### Tool rendering (`src/tool-rendering.ts:11-79`)
 
 - Spread Pi's definition and delegate execution with original arguments, signal, update callback,
   and context. Construct against `ctx.cwd`, not the startup working directory. Return results
   and throw errors unchanged. No model context or session events are rewritten.
-- Set `renderShell: "self"`. Return empty `Container`s from both slots when hidden and not failed.
-  Pi then draws zero text lines, including no surrounding blank shell.
-- Use `context.isError` for both slots, revealing failed calls and their results.
+- Set `renderShell: "self"`. Return empty `Container`s from both slots when hidden, including
+  failures by default. Pi then draws zero text lines, including no surrounding blank shell.
+- Use `context.isError` and `hideFailures` for both slots. With `hidden: true` and
+  `hideFailures: false`, failed calls and results stay visible while other rows remain hidden.
 - Always run the original renderers, including while hidden, then suppress their output.
   Bash's renderer starts/stops its elapsed timer; skipping a hidden completion leaks that timer.
   For visible default-shell tools, recreate Pi's `Box`; edit keeps its own shell.
@@ -103,13 +110,15 @@ classDiagram
   renderer's `lastComponent`. Preserve asynchronous invalidation and shared renderer state.
 - Clear a cached component if its renderer throws, matching Pi's fresh-component retry. This
   prevents a failed write-render transition from repeatedly reusing an incompatible component.
-  Let Pi show its fallback when visible/failed; keep successful hidden rows empty on render errors.
+  Let Pi show its fallback when a row should be visible; keep hidden rows empty on render errors.
 
-### Preferences (`src/preferences.ts:5-30`)
+### Preferences (`src/preferences.ts:5-38`)
 
-- Store only `{ "hidden": boolean }` under `getAgentDir()/pi-hide-tools.json`.
-- A missing, invalid, or unreadable file means visible. Invalid and unreadable files also produce
-  a warning. Startup does not overwrite the file. There is no project-specific preference.
+- Store `{ "hidden": boolean, "hideFailures": boolean }` under `getAgentDir()/pi-hide-tools.json`.
+  Defaults are `hidden: false` and `hideFailures: true`. Older files with only `hidden` retain
+  that value and default `hideFailures` to `true`; startup does not rewrite them.
+- A missing, invalid, or unreadable file uses the defaults. Invalid and unreadable files also
+  produce a warning. Startup does not overwrite the file. There is no project-specific preference.
 - Save via a unique temporary file in the same directory and atomic rename. Clean up the
   temporary file on success/failure. A failed save leaves the toggle active for this session
   and reports that persistence failed. Rendering never reads or writes files.

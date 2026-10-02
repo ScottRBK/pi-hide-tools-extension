@@ -21,7 +21,7 @@ test("a hidden read still returns file contents, with no terminal text or shell"
   const cwd = await mkdtemp(join(tmpdir(), "hide-tools-read-"));
   t.after(() => rm(cwd, { recursive: true, force: true }));
   await writeFile(join(cwd, "note.txt"), "KEEP_THIS_RESULT\n");
-  const definition = wrap(createReadToolDefinition, { hidden: true });
+  const definition = wrap(createReadToolDefinition, { hidden: true, hideFailures: true });
   const args = { path: "note.txt" };
   const component = row(definition, args, cwd);
 
@@ -41,7 +41,7 @@ test("repeated toggles restore the original read rendering", async (t) => {
   const cwd = await mkdtemp(join(tmpdir(), "hide-tools-toggle-"));
   t.after(() => rm(cwd, { recursive: true, force: true }));
   await writeFile(join(cwd, "note.txt"), "RESTORED_READ\n");
-  const state = { hidden: false };
+  const state = { hidden: false, hideFailures: true };
   const original = createReadToolDefinition(cwd);
   const definition = wrap(createReadToolDefinition, state);
   const args = { path: "note.txt" };
@@ -62,11 +62,12 @@ test("repeated toggles restore the original read rendering", async (t) => {
   assert.match(actual.render(100).join("\n"), /RESTORED_READ/);
 });
 
-test("a failed read reveals both call and error while hiding is enabled", async (t) => {
+test("a failed read stays hidden without swallowing its error", async (t) => {
   // Arrange
   const cwd = await mkdtemp(join(tmpdir(), "hide-tools-error-"));
   t.after(() => rm(cwd, { recursive: true, force: true }));
-  const definition = wrap(createReadToolDefinition, { hidden: true });
+  const state = { hidden: true, hideFailures: true };
+  const definition = wrap(createReadToolDefinition, state);
   const args = { path: "missing.txt" };
   const component = row(definition, args, cwd);
 
@@ -80,7 +81,10 @@ test("a failed read reveals both call and error while hiding is enabled", async 
   assert.equal(error?.code, "ENOENT");
   component.updateResult({ content: [{ type: "text", text: error.message }], isError: true });
 
-  // Assert
+  // Assert: hiding changes only the display; showing the row restores the call and error.
+  assert.deepEqual(component.render(100), []);
+  state.hidden = false;
+  component.invalidate();
   const text = component.render(100).join("\n");
   assert.match(text, /missing.txt/);
   assert.match(text, /ENOENT/);
@@ -88,11 +92,11 @@ test("a failed read reveals both call and error while hiding is enabled", async 
 
 const pi = await import("@earendil-works/pi-coding-agent");
 for (const name of ["Read", "Bash", "Edit", "Write", "Grep", "Find", "Ls"]) {
-  test(`${name} keeps stock rendering across errors, expansion and repeated toggles`, () => {
+  test(`${name} keeps stock rendering across failure preferences, expansion and toggles`, () => {
     // Arrange
     const factory = pi[`create${name}ToolDefinition`];
     const cwd = process.cwd();
-    const state = { hidden: false };
+    const state = { hidden: false, hideFailures: true };
     const args = {
       path: "example.txt", pattern: "example", command: "echo example", content: "example",
       edits: [{ oldText: "before", newText: "after" }],
@@ -100,7 +104,10 @@ for (const name of ["Read", "Bash", "Edit", "Write", "Grep", "Find", "Ls"]) {
     const expected = row(factory(cwd), args, cwd);
     const actual = row(wrap(factory, state), args, cwd);
     // Act / Assert
-    for (const isError of [false, true]) {
+    for (const [hideFailures, isError, hidesResult] of [
+      [true, false, true], [true, true, true], [false, false, true], [false, true, false],
+    ]) {
+      state.hideFailures = hideFailures;
       const result = { content: [{ type: "text", text: "RENDERED_RESULT" }], isError };
       expected.updateResult(result);
       actual.updateResult(result);
@@ -110,7 +117,7 @@ for (const name of ["Read", "Bash", "Edit", "Write", "Grep", "Find", "Ls"]) {
         for (const hidden of [true, false, true, false]) {
           state.hidden = hidden;
           actual.invalidate();
-          assert.deepEqual(actual.render(100), hidden && !isError ? [] : expected.render(100));
+          assert.deepEqual(actual.render(100), hidden && hidesResult ? [] : expected.render(100));
         }
       }
     }

@@ -10,31 +10,116 @@ import { openSession } from "./session.mjs";
 initTheme("dark", false);
 const tui = new TuiMainScreen(new ProcessTerminal());
 
-function readRow(harness) {
+function readRow(harness, isError = false) {
   const row = new ToolExecutionComponent("read", "test-call", { path: "example.txt" }, {},
     harness.session.getToolDefinition("read"), tui, harness.cwd);
   row.updateResult({
-    content: [{ type: "text", text: "UNCHANGED_RESULT" }], isError: false,
+    content: [{ type: "text", text: "UNCHANGED_RESULT" }], isError,
   });
   harness.rows.push(row);
   return row;
 }
 
-test("/hide-tools hides and restores existing rows without changing Ctrl+O", async (t) => {
+for (const isError of [false, true]) {
+  const outcome = isError ? "failed" : "successful";
+  test(`/hide-tools hides and restores ${outcome} rows without changing Ctrl+O`, async (t) => {
+    // Arrange
+    const harness = await openSession(t, initialize);
+    const row = readRow(harness, isError);
+    harness.ui.setToolsExpanded(true);
+    const visible = row.render(100);
+    assert.match(visible.join("\n"), /UNCHANGED_RESULT/);
+
+    // Act / Assert
+    await harness.session.prompt("/hide-tools");
+    assert.deepEqual(row.render(100), []);
+    assert.equal(harness.ui.getToolsExpanded(), true);
+    assert.equal(harness.notices.at(-1).message,
+      "Built-in tools hidden (including failures). Preference saved.");
+    await harness.session.prompt("/hide-tools");
+    assert.deepEqual(row.render(100), visible);
+    assert.equal(harness.ui.getToolsExpanded(), true);
+  });
+}
+
+test("/hide-tools failures toggles only failed rows and saves the choice", async (t) => {
   // Arrange
-  const harness = await openSession(t, initialize);
-  const row = readRow(harness);
-  harness.ui.setToolsExpanded(true);
-  const visible = row.render(100);
-  assert.match(visible.join("\n"), /UNCHANGED_RESULT/);
+  const h = await openSession(t, initialize);
+  const successful = readRow(h);
+  const failed = readRow(h, true);
+  const visibleFailure = failed.render(100);
+  await h.session.prompt("/hide-tools");
+  assert.deepEqual(successful.render(100), []);
+  assert.deepEqual(failed.render(100), []);
+
+  // Act / Assert: opting out reveals only failures, including after restarting.
+  await h.session.prompt("/hide-tools failures");
+  assert.deepEqual(successful.render(100), []);
+  assert.deepEqual(failed.render(100), visibleFailure);
+  assert.equal(h.notices.at(-1).message,
+    "Failed calls stay visible when tools are hidden. Preference saved.");
+  const resumed = await openSession(t, initialize, { cwd: h.cwd });
+  assert.deepEqual(readRow(resumed).render(100), []);
+  const resumedFailure = readRow(resumed, true);
+  assert.deepEqual(resumedFailure.render(100), visibleFailure);
+
+  // Act / Assert: opting back in hides failures without showing successful rows.
+  await resumed.session.prompt("/hide-tools failures");
+  assert.deepEqual(resumedFailure.render(100), []);
+  assert.equal(resumed.notices.at(-1).message,
+    "Failed calls are included when tools are hidden. Preference saved.");
+  const restarted = await openSession(t, initialize, { cwd: h.cwd });
+  assert.deepEqual(readRow(restarted).render(100), []);
+  assert.deepEqual(readRow(restarted, true).render(100), []);
+});
+
+test("the failures option changes policy without hiding currently visible rows", async (t) => {
+  // Arrange
+  const h = await openSession(t, initialize);
+  const successful = readRow(h);
+  const failed = readRow(h, true);
+  const visibleSuccess = successful.render(100);
+  const visibleFailure = failed.render(100);
 
   // Act / Assert
-  await harness.session.prompt("/hide-tools");
-  assert.deepEqual(row.render(100), []);
-  assert.equal(harness.ui.getToolsExpanded(), true);
-  await harness.session.prompt("/hide-tools");
-  assert.deepEqual(row.render(100), visible);
-  assert.equal(harness.ui.getToolsExpanded(), true);
+  await h.session.prompt("/hide-tools failures");
+  assert.deepEqual(successful.render(100), visibleSuccess);
+  assert.deepEqual(failed.render(100), visibleFailure);
+  await h.session.prompt("/hide-tools");
+  assert.deepEqual(successful.render(100), []);
+  assert.deepEqual(failed.render(100), visibleFailure);
+  assert.equal(h.notices.at(-1).message,
+    "Built-in tools hidden (failures stay visible). Preference saved.");
+  await h.session.prompt("/hide-tools");
+  assert.deepEqual(successful.render(100), visibleSuccess);
+  assert.deepEqual(failed.render(100), visibleFailure);
+  const restarted = await openSession(t, initialize, { cwd: h.cwd });
+  assert.deepEqual(readRow(restarted).render(100), visibleSuccess);
+  assert.deepEqual(readRow(restarted, true).render(100), visibleFailure);
+  await restarted.session.prompt("/hide-tools");
+  assert.deepEqual(readRow(restarted).render(100), []);
+  assert.deepEqual(readRow(restarted, true).render(100), visibleFailure);
+});
+
+test("unsupported arguments leave visibility and saved preferences unchanged", async (t) => {
+  // Arrange
+  const h = await openSession(t, initialize);
+  const successful = readRow(h);
+  const failed = readRow(h, true);
+  await h.session.prompt("/hide-tools");
+  const path = join(h.agentDir, "pi-hide-tools.json");
+  const saved = await readFile(path, "utf8");
+
+  // Act / Assert
+  for (const args of ["all", "failure", "failures extra"]) {
+    await h.session.prompt(`/hide-tools ${args}`);
+    assert.deepEqual(successful.render(100), []);
+    assert.deepEqual(failed.render(100), []);
+    assert.equal(await readFile(path, "utf8"), saved);
+    assert.deepEqual(h.notices.at(-1), {
+      message: "Usage: /hide-tools [failures]", type: "warning",
+    });
+  }
 });
 
 const selected = ["read", "bash", "edit", "write", "grep", "find", "ls"];
@@ -106,6 +191,7 @@ for (const mode of ["rpc", "json", "print"]) {
     const h = await openSession(t, initialize, { mode });
     // Act
     await h.session.prompt("/hide-tools");
+    await h.session.prompt("/hide-tools failures");
     // Assert
     assert.deepEqual(h.session.getAllTools(), h.before);
     assert.deepEqual(h.session.getActiveToolNames(), h.activeBefore);
@@ -160,13 +246,38 @@ test("the visibility choice survives a fresh Pi session", async (t) => {
   assert.notDeepEqual(readRow(third).render(100), []);
 });
 
+test("old preferences include failures without rewriting the file on startup", async (t) => {
+  // Arrange
+  const h = await openSession(t, initialize);
+  const path = join(h.agentDir, "pi-hide-tools.json");
+  const { mkdir } = await import("node:fs/promises");
+  await mkdir(h.agentDir, { recursive: true });
+  for (const hidden of [true, false]) {
+    const text = JSON.stringify({ hidden });
+    await writeFile(path, text);
+    // Act
+    const resumed = await openSession(t, initialize, { cwd: h.cwd });
+    // Assert
+    for (const isError of [false, true]) {
+      const rendered = readRow(resumed, isError).render(100);
+      if (hidden) assert.deepEqual(rendered, []);
+      else assert.notDeepEqual(rendered, []);
+    }
+    assert.equal(await readFile(path, "utf8"), text);
+  }
+});
+
 test("invalid preferences warn, start visible, and are not rewritten on startup", async (t) => {
   // Arrange
   const h = await openSession(t, initialize);
   const path = join(h.agentDir, "pi-hide-tools.json");
   const { mkdir } = await import("node:fs/promises");
   await mkdir(h.agentDir, { recursive: true });
-  for (const text of ['{"hidden":"yes"}', '{broken', 'null']) {
+  const invalid = [
+    '{"hidden":"yes"}', '{broken', 'null',
+    '{"hidden":true,"hideFailures":"no"}', '{"hidden":true,"hideFailures":null}',
+  ];
+  for (const text of invalid) {
     await writeFile(path, text);
     // Act
     await h.bind();
@@ -174,7 +285,8 @@ test("invalid preferences warn, start visible, and are not rewritten on startup"
     assert.notDeepEqual(readRow(h).render(100), []);
     assert.equal(await readFile(path, "utf8"), text);
   }
-  assert.equal(h.notices.filter((x) => /cannot read preference/.test(x.message)).length, 3);
+  assert.equal(h.notices.filter((x) => /cannot read preference/.test(x.message)).length,
+    invalid.length);
 });
 
 test("a failed save still toggles this session and reports that it was not saved", async (t) => {
@@ -183,11 +295,21 @@ test("a failed save still toggles this session and reports that it was not saved
   const { mkdir, readdir } = await import("node:fs/promises");
   await mkdir(join(h.agentDir, "pi-hide-tools.json"), { recursive: true });
   const row = readRow(h);
+  const failed = readRow(h, true);
+  const visibleFailure = failed.render(100);
   // Act
   await h.session.prompt("/hide-tools");
   // Assert
   assert.deepEqual(row.render(100), []);
-  assert.ok(h.notices.some((x) => x.type === "warning" && /session only/.test(x.message)));
+  assert.deepEqual(failed.render(100), []);
+  assert.match(h.notices.at(-1).message, /session only/);
+  assert.equal(h.notices.at(-1).type, "warning");
+  // Act / Assert: the failure policy also stays active if it cannot be saved.
+  await h.session.prompt("/hide-tools failures");
+  assert.deepEqual(row.render(100), []);
+  assert.deepEqual(failed.render(100), visibleFailure);
+  assert.match(h.notices.at(-1).message, /session only/);
+  assert.equal(h.notices.at(-1).type, "warning");
   assert.deepEqual((await readdir(h.agentDir)).filter((name) => name.startsWith("pi-hide-tools")),
     ["pi-hide-tools.json"]);
 });

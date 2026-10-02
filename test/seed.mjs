@@ -24,13 +24,15 @@ export function appendCall(manager, name, args, result, isError = false) {
 
 // Real built-ins execute in the temporary cwd. Recorded peer rows never execute a peer tool.
 export async function seed(h) {
-  await writeFile(join(h.cwd, "source.txt"), "HIDDEN_READ_PAYLOAD\n");
+  // Keep the read marker out of the edit diff so the terminal expansion check is unambiguous.
+  await writeFile(join(h.cwd, "read.txt"), "HIDDEN_READ_PAYLOAD\n");
+  await writeFile(join(h.cwd, "source.txt"), "ORIGINAL_EDIT_PAYLOAD\n");
   const calls = [
-    ["read", { path: "source.txt" }],
+    ["read", { path: "read.txt" }],
     ["bash", { command: "printf HIDDEN_BASH_PAYLOAD" }],
     ["write", { path: "written.txt", content: "HIDDEN_WRITE_PAYLOAD\n" }],
     ["edit", { path: "source.txt", edits: [{
-      oldText: "HIDDEN_READ_PAYLOAD", newText: "HIDDEN_EDIT_PAYLOAD",
+      oldText: "ORIGINAL_EDIT_PAYLOAD", newText: "HIDDEN_EDIT_PAYLOAD",
     }] }],
     ["grep", { path: "source.txt", pattern: "HIDDEN_EDIT" }],
     ["find", { path: ".", pattern: "written.txt" }],
@@ -45,9 +47,9 @@ export async function seed(h) {
     const result = await tool.execute(`fixture-${name}`, args);
     appendCall(manager, name, args, result);
   }
-  // Failed calls must remain visible even when successful built-in calls are hidden.
+  // A recorded failure exercises both the default hiding and the opt-out preference.
   appendCall(manager, "read", { path: "MISSING_FILE" }, {
-    content: [{ type: "text", text: "VISIBLE_FAILURE" }],
+    content: [{ type: "text", text: "FAILURE_PAYLOAD" }],
   }, true);
   appendCall(manager, "subagent", { agent_type: "claude_code" }, {
     content: [{ type: "text", text: "VISIBLE_AGENTSHELL" }],

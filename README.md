@@ -1,7 +1,7 @@
 # Pi Hide Tools Extension
 
 Hide built-in tool calls and results in [Pi][pi], while leaving all other extensions' tools
-unchanged. Failed calls stay visible.
+unchanged. Failed calls are hidden too by default.
 
 ## Requirements
 
@@ -35,8 +35,17 @@ In Pi, run:
 ```
 
 Run it again to show the tools. The command hides calls and results for `read`, `bash`,
-`edit`, `write`, `grep`, `find`, and `ls`, including while they are running. If a call fails,
-its arguments and error become visible.
+`edit`, `write`, `grep`, `find`, and `ls`, including running and failed calls.
+
+To keep failures visible while other tool rows are hidden, run:
+
+```text
+/hide-tools failures
+```
+
+Run that again to include failures in hiding. This argument only changes the failure preference;
+it does not toggle the other rows. When tools are shown, all rows stay visible regardless of this
+preference.
 
 Tools continue to run normally. The model receives the same results, and session files and
 HTML exports keep the full content. Hiding tools does not remove sensitive data.
@@ -46,8 +55,10 @@ If another extension replaces a built-in tool, this extension leaves it alone an
 
 ### Saved preference
 
-Tools start visible. Each toggle saves your choice to `~/.pi/agent/pi-hide-tools.json`, or
-under `PI_CODING_AGENT_DIR` if set. New sessions use the saved choice.
+Tools start visible, with failures included whenever hiding is enabled. Each toggle saves both
+choices to `~/.pi/agent/pi-hide-tools.json`, or under `PI_CODING_AGENT_DIR` if set. New sessions use
+the saved choices. Existing preferences keep their shown/hidden setting and include failures by
+default until you change the failure preference.
 
 If the preference cannot be read, tools start visible and Pi shows a warning. If saving
 fails, the toggle still works for the current session. Keep the preference as a regular file:

@@ -1,7 +1,7 @@
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Box, Container, type Component } from "@earendil-works/pi-tui";
 
-export type VisibilityState = { hidden: boolean };
+import type { Preferences } from "./preferences.ts";
 
 type BuiltInFactory<P extends ToolDefinition["parameters"], D, S> =
   (cwd: string) => ToolDefinition<P, D, S>;
@@ -10,7 +10,7 @@ type Row = { call?: Component; result?: Component; shell?: Box };
 
 export function wrap<P extends ToolDefinition["parameters"], D, S>(
   factory: BuiltInFactory<P, D, S>,
-  state: VisibilityState,
+  state: Preferences,
 ): ToolDefinition<P, D, S> {
   const original = factory(process.cwd());
   const renderCall = original.renderCall!;
@@ -32,7 +32,7 @@ export function wrap<P extends ToolDefinition["parameters"], D, S>(
       return factory(ctx.cwd).execute(id, args, signal, onUpdate, ctx);
     },
     renderCall(args, theme, context) {
-      const hidden = state.hidden && !context.isError;
+      const hidden = state.hidden && (state.hideFailures || !context.isError);
       const row = rowFor(context.state as object);
       try {
         row.call = renderCall(args, theme, { ...context, lastComponent: row.call });
@@ -56,7 +56,7 @@ export function wrap<P extends ToolDefinition["parameters"], D, S>(
       return row.shell;
     },
     renderResult(result, options, theme, context) {
-      const hidden = state.hidden && !context.isError;
+      const hidden = state.hidden && (state.hideFailures || !context.isError);
       const row = rowFor(context.state as object);
       try {
         row.result = renderResult(result, options, theme, {

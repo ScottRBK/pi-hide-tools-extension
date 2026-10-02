@@ -26,15 +26,17 @@ files in temporary directories. It executes tools without making model requests.
 Coverage includes:
 
 - Execution and results for all seven built-in tools while their rows are hidden.
-- Visible failures, repeated toggles, Ctrl+O state, and recovery from renderer errors.
+- Failures hidden by default, the `failures` opt-out, repeated toggles, Ctrl+O state, and
+  recovery from renderer errors.
 - Bash streaming, cancellation, shell settings, and path normalization for `~/` and file URLs.
 - Bash timer cleanup when a running row is hidden before completion.
 - Read's image-resizing setting.
-- Preference persistence, invalid files, failed saves, and temporary-file cleanup.
+- Both preferences persisting, older files defaulting to hiding failures, invalid files,
+  failed saves, temporary-file cleanup, and unsupported command arguments.
 - Tool availability, schemas, prompt metadata, and unchanged RPC, JSON, and print modes.
 - Competing overrides in both load orders and detection of a later winning override.
 - Unchanged definitions and rendering for other extensions' tools through toggles and reload.
-- Original tool results preserved in HTML exports.
+- Successful and failed results preserved in history and HTML exports under both policies.
 
 ## Terminal check
 
@@ -46,10 +48,10 @@ This starts Pi with the local extension in an isolated tmux server and session. 
 saved session populated by real built-in tool executions. Results from other extensions' tools
 are recorded fixtures; those tools are not executed.
 
-The check exercises saved preferences, show/hide toggling, Ctrl+O, visible errors, HTML export,
-reload, and session switching. It prints the directory containing terminal captures and the
-exported HTML, then removes its tmux session, including on failure. Existing tmux sessions
-are left alone.
+The check exercises saved preferences, show/hide toggling, Ctrl+O, failures hidden by default,
+showing only failures with `/hide-tools failures`, HTML export, reload, and session switching.
+It prints the directory containing terminal captures and the exported HTML, then removes its
+tmux session, including on failure. Existing tmux sessions are left alone.
 
 The reload and session-switch checks report whether restored rows are hidden. Those rows can
 stay visible because Pi creates them before the extension registers its wrappers. The check
@@ -71,5 +73,5 @@ network requests. The check does not block these actions for arbitrary extension
 ## Manual export check
 
 Open the terminal check's `session.html` in a browser. Confirm that results from all seven
-built-in tools are readable, even though their terminal rows were hidden. The recorded
-results from other extensions' tools should also remain visible.
+built-in tools, including the recorded failure, are readable even though their terminal rows
+were hidden. The recorded results from other extensions' tools should also remain visible.

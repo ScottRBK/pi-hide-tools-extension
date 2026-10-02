@@ -5,7 +5,7 @@ import { ProcessTerminal, TuiMainScreen } from "@earendil-works/pi-tui";
 import { wrap } from "../../src/tool-rendering.ts";
 
 initTheme("dark", false);
-const state = { hidden: false };
+const state = { hidden: false, hideFailures: true };
 const ui = new TuiMainScreen(new ProcessTerminal());
 const component = new ToolExecutionComponent("bash", "timer", { command: "printf result" }, {},
   wrap(createBashToolDefinition, state), ui, process.cwd());

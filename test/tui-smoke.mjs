@@ -21,6 +21,8 @@ const tmux = (...args) => execFileSync("tmux", ["-L", name, "-f", "/dev/null", .
   encoding: "utf8",
 });
 const capture = () => tmux("capture-pane", "-p", "-t", name);
+const allHidden = (text) => !text.includes("HIDDEN_")
+  && !text.includes("FAILURE_PAYLOAD") && !text.includes("MISSING_FILE");
 const input = (text) => {
   tmux("send-keys", "-t", name, "-l", text);
   tmux("send-keys", "-t", name, "Enter");
@@ -56,24 +58,34 @@ try {
   started = true;
   const initial = await until((text) => text.includes("SMOKE_READY"), "startup");
   await writeFile(join(directory, "01-hidden.txt"), initial);
-  const markers = ["VISIBLE_FAILURE", "VISIBLE_AGENTSHELL", "VISIBLE_FORGETFUL", "VISIBLE_WEB"];
+  const markers = ["VISIBLE_AGENTSHELL", "VISIBLE_FORGETFUL", "VISIBLE_WEB"];
   for (const marker of markers) {
     assert.ok(initial.includes(marker), marker);
   }
-  assert.ok(!initial.includes("HIDDEN_"), "successful rows are hidden on resume");
+  assert.ok(allHidden(initial), "successful and failed rows are hidden on resume");
+
+  input("/hide-tools failures");
+  const failures = await until((text) => text.includes("FAILURE_PAYLOAD"), "show only failures");
+  assert.ok(failures.includes("MISSING_FILE"), "failed call arguments are restored");
+  assert.ok(!failures.includes("HIDDEN_"), "successful rows remain hidden");
+  await writeFile(join(directory, "02-failures-visible.txt"), failures);
+  input("/hide-tools failures");
+  const failuresHidden = await until(allHidden, "hide failures again");
+  await writeFile(join(directory, "03-failures-hidden.txt"), failuresHidden);
 
   input("/hide-tools");
   await until((text) => text.includes("HIDDEN_BASH_PAYLOAD"), "show tools");
   tmux("send-keys", "-t", name, "C-o");
   const expanded = await until((text) => text.includes("HIDDEN_READ_PAYLOAD"), "expand tools");
-  await writeFile(join(directory, "02-expanded.txt"), expanded);
+  assert.ok(expanded.includes("FAILURE_PAYLOAD"), "showing tools also restores failures");
+  await writeFile(join(directory, "04-expanded.txt"), expanded);
   input("/hide-tools");
-  const hidden = await until((text) => !text.includes("HIDDEN_"), "hide expanded tools");
-  await writeFile(join(directory, "03-hidden-again.txt"), hidden);
+  const hidden = await until(allHidden, "hide expanded tools");
+  await writeFile(join(directory, "05-hidden-again.txt"), hidden);
   input("/hide-tools");
   await until((text) => text.includes("HIDDEN_READ_PAYLOAD"), "restore expanded state");
   input("/hide-tools");
-  await until((text) => !text.includes("HIDDEN_"), "hide before export");
+  await until(allHidden, "hide before export");
 
   const exportPath = join(directory, "session.html");
   input(`/export ${exportPath}`);
@@ -81,15 +93,15 @@ try {
   assert.ok((await readFile(exportPath, "utf8")).includes("session-data"));
   input("/reload");
   const reloaded = await until((text) => text.includes("Reloaded"), "reload");
-  await writeFile(join(directory, "04-reloaded.txt"), reloaded);
+  await writeFile(join(directory, "06-reloaded.txt"), reloaded);
   // Some Pi lifecycle paths construct restored rows before session_start; record that boundary.
-  console.log(`Reloaded history hidden: ${!reloaded.includes("HIDDEN_")}`);
+  console.log(`Reloaded history hidden: ${allHidden(reloaded)}`);
   input("/smoke-new");
   await until((text) => !text.includes("SMOKE_READY"), "new session");
   input(`/smoke-switch ${h.session.sessionManager.getSessionFile()}`);
   const switched = await until((text) => text.includes("SMOKE_READY"), "switch session");
-  await writeFile(join(directory, "05-switched.txt"), switched);
-  console.log(`Switched history hidden: ${!switched.includes("HIDDEN_")}`);
+  await writeFile(join(directory, "07-switched.txt"), switched);
+  console.log(`Switched history hidden: ${allHidden(switched)}`);
   console.log(`PASS: offline TUI checks. Evidence: ${directory}`);
 } finally {
   if (started) {

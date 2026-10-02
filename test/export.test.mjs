@@ -9,28 +9,31 @@ import { seed } from "./seed.mjs";
 
 initTheme("dark", false);
 
-test("HTML export retains the recorded results for every hidden built-in tool", async (t) => {
+test("history and exports retain successes and failures under both hiding policies", async (t) => {
   // Arrange
   const h = await openSession(t, initialize, {
     persist: true, tools: ["read", "bash", "write", "edit", "grep", "find", "ls"],
   });
-  const calls = await seed(h);
+  await seed(h);
   const entries = structuredClone(h.session.sessionManager.getEntries());
-  await h.session.prompt("/hide-tools");
+  const results = entries.filter((entry) => entry.message?.role === "toolResult");
+  assert.ok(results.some((entry) => entry.message.isError), "fixture includes a failure");
 
-  // Act
-  const path = await h.session.exportToHtml(join(h.cwd, "session.html"));
-  const html = await readFile(path, "utf8");
+  for (const command of ["/hide-tools", "/hide-tools failures"]) {
+    // Act
+    await h.session.prompt(command);
+    const path = await h.session.exportToHtml(join(h.cwd, "session.html"));
+    const html = await readFile(path, "utf8");
 
-  // Assert: session data is embedded losslessly, even when TUI renderers return no text.
-  const encoded = html.match(/id="session-data" type="application\/json">([^<]+)</)?.[1];
-  assert.ok(encoded, "Pi's exported session data is present");
-  const data = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
-  for (const [name] of calls) {
-    const original = entries.find((entry) => entry.message?.toolName === name);
-    assert.ok(original, name);
-    const exported = data.entries.find((entry) => entry.id === original.id);
-    assert.deepEqual(exported.message, JSON.parse(JSON.stringify(original.message)));
+    // Assert: session data is embedded losslessly, even when TUI renderers return no text.
+    const encoded = html.match(/id="session-data" type="application\/json">([^<]+)</)?.[1];
+    assert.ok(encoded, "Pi's exported session data is present");
+    const data = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
+    for (const original of results) {
+      const exported = data.entries.find((entry) => entry.id === original.id);
+      assert.ok(exported, original.message.toolName);
+      assert.deepEqual(exported.message, JSON.parse(JSON.stringify(original.message)));
+    }
+    assert.deepEqual(h.session.sessionManager.getEntries(), entries);
   }
-  assert.deepEqual(h.session.sessionManager.getEntries(), entries);
 });
